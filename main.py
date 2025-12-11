@@ -1,6 +1,7 @@
 import re
 import os
 import csv
+import zipfile
 import requests
 import browser_cookie3
 
@@ -17,7 +18,8 @@ if not libro_fm_cookies:
     exit(1)
 
 print("Libro.fm cookies found.")
-print("Retrieving information...")
+print("Retrieving library information...")
+print("This may take a while, especially with larger libraries")
 
 library_export_url = "https://libro.fm/user/library/export.csv"
 
@@ -48,16 +50,39 @@ for row in csv_data:
         file_title = raw_download_line.split("file=")[1].split("&")[0].replace("%28", "(").replace("%29", ")").replace("+", " ")
         collected_download_urls[file_title] = download_url
 
+print("Created output directory")
 os.makedirs("library_out", exist_ok=True)
 
+zip_file_paths = []
+
+print("Downloading compressed files...")
 for title, url in collected_download_urls.items():
-    title_stripped = title.replace(".zip", "")
+    title_stripped = title.split(" (")[0]
 
     print(f"Downloading {title}...")
-    with open(f"library_out/{title_stripped}/{title}", "wb") as f:
+    zip_path =f"library_out/{title_stripped}/{title}"
+    os.makedirs("/".join(zip_path.split("/")[:-1]), exist_ok=True) 
+    with open(zip_path, "wb") as f:
         download_response = requests.get(url, headers=request_headers, cookies=libro_fm_cookies)
         f.write(download_response.content)
     
-    break
+    zip_file_paths.append(zip_path)
+    break # Remove this to download all of them
 
-# Proof of concept maybe
+print("Extracting compressed files")
+for zip_path in zip_file_paths:
+    unzip_directory = os.path.dirname(zip_path)
+    with zipfile.ZipFile(zip_path, "r") as z:
+        z.extractall(unzip_directory)
+
+    print(f"Removing {zip_path}...")
+    os.remove(zip_path)
+    print("Renaming files...")
+    for i in os.listdir(unzip_directory):
+        os.rename(f"{unzip_directory}/{i}", f"{unzip_directory}/{i.split(' - ')[-1]}") 
+        # Should work for every title(?)
+        # We just want track numbers for mp3s
+
+print("Backup finished.")
+# Proof of concept to download and extract files
+# TODO: Sort files by book author
