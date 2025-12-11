@@ -1,4 +1,5 @@
 import re
+import os
 import csv
 import requests
 import browser_cookie3
@@ -16,6 +17,7 @@ if not libro_fm_cookies:
     exit(1)
 
 print("Libro.fm cookies found.")
+print("Retrieving information...")
 
 library_export_url = "https://libro.fm/user/library/export.csv"
 
@@ -24,28 +26,38 @@ request_headers = {
     "Referer": "https://libro.fm/user/library",
 }
 
-print("Downloading library summary as csv.")
-
 library_csv_summary_response = requests.get(
     library_export_url, headers=request_headers, cookies=libro_fm_cookies
 )
 
-print("Library csv downloaded.")
-
-print("Reading csv")
-
-
 csv_reader = csv.DictReader(library_csv_summary_response.text.split("\n"))
 csv_data = [row for row in csv_reader]
 
-for row in csv_data:
-    if row["Title"] == "Halt's Peril":
-        info_url = row["URL"]
-        info_response = requests.get(info_url, headers=request_headers, cookies=libro_fm_cookies)
-        raw_download_lines = re.findall(re.compile("Download \d.*"), info_response.text)
+collected_download_urls = {}
 
-        for raw_download_line in raw_download_lines:
-            download_url = "https://libro.fm" + raw_download_line.split('href="')[1].split('">')[0]
-            print(download_url)
-            
-        break
+# This will be a very lengthy operation for any reasonably sized library
+# I will later implement some sort of check for if the files already exist
+
+for row in csv_data:
+    info_url = row["URL"]
+    info_response = requests.get(info_url, headers=request_headers, cookies=libro_fm_cookies)
+    raw_download_lines = re.findall(re.compile("Download \d.*"), info_response.text)
+
+    for raw_download_line in raw_download_lines:
+        download_url = "https://libro.fm" + raw_download_line.split('href="')[1].split('">')[0]
+        file_title = raw_download_line.split("file=")[1].split("&")[0].replace("%28", "(").replace("%29", ")").replace("+", " ")
+        collected_download_urls[file_title] = download_url
+
+os.makedirs("library_out", exist_ok=True)
+
+for title, url in collected_download_urls.items():
+    title_stripped = title.replace(".zip", "")
+
+    print(f"Downloading {title}...")
+    with open(f"library_out/{title_stripped}/{title}", "wb") as f:
+        download_response = requests.get(url, headers=request_headers, cookies=libro_fm_cookies)
+        f.write(download_response.content)
+    
+    break
+
+# Proof of concept maybe
