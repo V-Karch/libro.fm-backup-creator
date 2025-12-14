@@ -127,3 +127,21 @@ class Library:
                 book.download_urls.append(download_url)
 
         return self.books
+
+    def extract_downloaded_files(self) -> None:
+        books_list = self.fetch_books()
+
+        for book in books_list:  # Preliminary Path
+            if book.downloaded_paths == []:
+                raise ValueError(
+                    "Cannot extract files if they have not all been downloaded"
+                )
+
+        book_count = 1
+        for book in books_list:
+            for zip_file_path in book.downloaded_paths:
+                zip_file = zipfile.ZipFile(zip_file_path)
+                zip_file.extractall("/".join(zip_file_path.split("/")[:-1]))
+                print(
+                    f"({book_count} / {len(books_list)}) Extracting {zip_file_path}..."
+                )
