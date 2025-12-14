@@ -145,3 +145,14 @@ class Library:
                 print(
                     f"({book_count} / {len(books_list)}) Extracting {zip_file_path}..."
                 )
+            
+            book_count += 1
+
+    def download_all_books(self) -> None:
+        book_count = 1
+        for book in self.fetch_books():
+            print(
+                f"({book_count} / {len(self.fetch_books())}) Downloading {book.title}..."
+            )
+            book.download(self.cookies)
+            book_count += 1
