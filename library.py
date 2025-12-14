@@ -131,7 +131,7 @@ class Library:
     def extract_downloaded_files(self) -> None:
         books_list = self.fetch_books()
 
-        for book in books_list:  # Preliminary Path
+        for book in books_list:  # Preliminary Pass
             if book.downloaded_paths == []:
                 raise ValueError(
                     "Cannot extract files if they have not all been downloaded"
@@ -145,14 +145,55 @@ class Library:
                 print(
                     f"({book_count} / {len(books_list)}) Extracting {zip_file_path}..."
                 )
-            
+
             book_count += 1
 
-    def download_all_books(self) -> None:
+    def download_all_books(self, output_directory: str = "library_out") -> None:
         book_count = 1
         for book in self.fetch_books():
             print(
                 f"({book_count} / {len(self.fetch_books())}) Downloading {book.title}..."
             )
-            book.download(self.cookies)
+            book.download(self.cookies, output_directory)
             book_count += 1
+
+    def cleanup_files(self) -> None:
+        books_list = self.fetch_books()
+
+        for book in books_list:  # Preliminary Pass
+            if book.downloaded_paths == []:
+                raise ValueError(
+                    "Cannot clean up files if they have not all been downloaded"
+                )
+
+        for book in books_list:
+            for zip_path in book.downloaded_paths:
+                os.remove(zip_path)
+
+            book_directory = "/".join(book.downloaded_paths[0].split("/")[:-1])
+            for mp3 in os.listdir(book_directory):
+                os.rename(
+                    f"{book_directory}/{mp3}",
+                    f"{book_directory}/{mp3.split(' - ')[-1]}",
+                )
+
+    def backup(self, output_directory: str = "library_out") -> None:
+        # Perform a full library backup
+
+        print("Running setup stage...")
+        # Setup Stage
+        self.fetch_book_download_urls()
+
+        print("Running download stage...")
+        # Download Stage
+        self.download_all_books(output_directory)
+
+        print("Running extraction stage...")
+        # Extraction Stage
+        self.extract_downloaded_files()
+
+        print("Running cleanup stage...")
+        # Cleanup Stage
+        self.cleanup_files()
+
+        print("Clean! Library backed up!")
