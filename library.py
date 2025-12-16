@@ -4,6 +4,7 @@ import csv
 import zipfile
 import requests
 from cookie import find_libro_fm_cookies
+from filename_sanitizer import unicode_filename_safe
 
 
 class Book:
@@ -48,8 +49,12 @@ class Book:
                 .replace("%27", "'")
             )  # Removing some garbage characters
 
-            download_path = f"{output_directory}/{self.authors}/{self.title}/{cleaned_download_name}"
-            directory_path = f"{output_directory}/{self.authors}/{self.title}"
+            safe_authors = unicode_filename_safe(self.authors)
+            safe_title = unicode_filename_safe(self.title)
+
+            cleaned_download_name = unicode_filename_safe(cleaned_download_name)
+            download_path = f"{output_directory}/{safe_authors}/{safe_title}/{cleaned_download_name}"
+            directory_path = f"{output_directory}/{safe_authors}/{safe_title}"
             os.makedirs(directory_path, exist_ok=True)
             self.downloaded_paths.append(download_path)
 
