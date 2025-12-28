@@ -92,4 +92,5 @@ library.backup("your_output_directory")
 ## How it looks while running:
   
 <img width="747" height="455" alt="image" src="https://github.com/user-attachments/assets/949331dd-cc48-473f-978a-b15fd370b435" />
+<img width="1084" height="477" alt="image" src="https://github.com/user-attachments/assets/847d0480-4b74-414c-af02-fd744a1d8985" />
 
