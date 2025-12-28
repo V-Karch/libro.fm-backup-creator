@@ -88,4 +88,8 @@ You can change the output directory by modifying the call to:
 ```py
 library.backup("your_output_directory")
 ```
+  
+## How it looks while running:
+  
+<img width="747" height="455" alt="image" src="https://github.com/user-attachments/assets/949331dd-cc48-473f-978a-b15fd370b435" />
 
