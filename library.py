@@ -19,29 +19,23 @@ class Book:
         self.download_urls: list[str] = []
         self.downloaded_paths: list[str] = []
 
-    def download(
-        self, session: requests.Session, output_directory="library_out"
-    ) -> None:
+    def download(self, session: requests.Session, output_directory: str) -> None:
         if not self.download_urls:
             raise ValueError("Download URLs not populated")
 
         for download_url in self.download_urls:
-            cleaned_name = (
-                download_url.split("file=")[1][:-14]
-                .replace("%28", "(")
-                .replace("%29", ")")
-                .replace("+", " ")
-                .replace("%27", "'")
-            )
+            filename = download_url.split("file=")[-1]
+            filename = filename.split("&")[0]
+            filename = filename.replace("+", " ")
+            filename = unicode_filename_safe(filename)
 
             safe_authors = unicode_filename_safe(self.authors)
             safe_title = unicode_filename_safe(self.title)
-            cleaned_name = unicode_filename_safe(cleaned_name)
 
             directory = f"{output_directory}/{safe_authors}/{safe_title}"
             os.makedirs(directory, exist_ok=True)
 
-            download_path = f"{directory}/{cleaned_name}"
+            download_path = f"{directory}/{filename}"
             self.downloaded_paths.append(download_path)
 
             with session.get(download_url, stream=True) as r:
@@ -62,7 +56,12 @@ class Library:
         "Referer": "https://libro.fm/user/library",
     }
 
-    def __init__(self):
+    def __init__(self, preferred_format: str):
+        if preferred_format not in {"mp3", "m4b"}:
+            raise ValueError("preferred_format must be 'mp3' or 'm4b'")
+
+        self.preferred_format = preferred_format
+
         cookies = find_libro_fm_cookies()
         if cookies is None:
             raise RuntimeError("No libro.fm cookies found. Please log in via browser.")
@@ -99,9 +98,20 @@ class Library:
             r = self.session.get(book.url)
             r.raise_for_status()
 
-            raw_links = re.findall(r'href="(/[^"]+download[^"]+)"', r.text)
-            for link in raw_links:
-                book.download_urls.append("https://libro.fm" + link.replace("amp;", ""))
+            links = re.findall(r'href="(/[^"]+download[^"]+)"', r.text)
+
+            for link in links:
+                full_url = "https://libro.fm" + link.replace("amp;", "")
+                lower = full_url.lower()
+
+                if self.preferred_format == "mp3" and ".zip" in lower:
+                    book.download_urls.append(full_url)
+
+                elif self.preferred_format == "m4b" and ".m4b" in lower:
+                    book.download_urls.append(full_url)
+
+            if not book.download_urls:
+                print(f"⚠️ No {self.preferred_format} download found for: {book.title}")
 
         return self.books
 
@@ -124,7 +134,7 @@ class Library:
                         f"{directory}/{f.split(' - ', 1)[1]}",
                     )
 
-    def backup(self, output_directory="library_out") -> None:
+    def backup(self, output_directory: str = "library_out") -> None:
         print("Fetching download URLs…")
         self.fetch_book_download_urls()
 
@@ -133,10 +143,11 @@ class Library:
             print(f"({i}/{len(self.books)}) {book.title}")
             book.download(self.session, output_directory)
 
-        print("Extracting…")
-        self.extract_downloaded_files()
+        if self.preferred_format == "mp3":
+            print("Extracting…")
+            self.extract_downloaded_files()
 
-        print("Cleaning up…")
-        self.cleanup_files()
+            print("Cleaning up…")
+            self.cleanup_files()
 
         print("Library backup complete ✅")
