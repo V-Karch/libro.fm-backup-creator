@@ -3,7 +3,7 @@ from library import Library
 
 def main():
     library = Library()
-    library.backup()
+    library.backup(output_directory="library_out")
 
 
 if __name__ == "__main__":

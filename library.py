@@ -16,189 +16,127 @@ class Book:
         self.publication_date: str = csv_row.get("Publication Date", "")
         self.purchased_date: str = csv_row.get("Date Purchased", "")
         self.url: str = csv_row.get("URL", "")
-        self.download_urls: list[str] = []  # Populated externally
-        self.downloaded_paths: list[str] = []  # Populated after download
+        self.download_urls: list[str] = []
+        self.downloaded_paths: list[str] = []
 
-    def __str__(self):
-        parts: list[str] = [
-            f"Title: {self.title}",
-            f"Author(s): {self.authors}",
-            f"Narrator(s): {self.narrators}",
-            f"ISBN: {self.isbn if self.isbn != 0 else 'N/A'}",
-            f"Publication Date: {self.publication_date or 'N/A'}",
-            f"Purchased Date: {self.purchased_date or 'N/A'}",
-            f"URL: {self.url or 'N/A'}",
-        ]
-        return "\n".join(parts)
-
-    def download(self, cookies, output_directory="library_out") -> None:
-        # Extremely lengthy, depends on network connection
-        # and file size and disk storage and etc.
-
-        if self.download_urls == []:
-            raise ValueError(
-                "You must first populate the book's download_urls through Library().fetch_book_download_urls()"
-            )
+    def download(
+        self, session: requests.Session, output_directory="library_out"
+    ) -> None:
+        if not self.download_urls:
+            raise ValueError("Download URLs not populated")
 
         for download_url in self.download_urls:
-            cleaned_download_name = (
+            cleaned_name = (
                 download_url.split("file=")[1][:-14]
                 .replace("%28", "(")
                 .replace("%29", ")")
                 .replace("+", " ")
                 .replace("%27", "'")
-            )  # Removing some garbage characters
+            )
 
             safe_authors = unicode_filename_safe(self.authors)
             safe_title = unicode_filename_safe(self.title)
+            cleaned_name = unicode_filename_safe(cleaned_name)
 
-            cleaned_download_name = unicode_filename_safe(cleaned_download_name)
-            download_path = f"{output_directory}/{safe_authors}/{safe_title}/{cleaned_download_name}"
-            directory_path = f"{output_directory}/{safe_authors}/{safe_title}"
-            os.makedirs(directory_path, exist_ok=True)
+            directory = f"{output_directory}/{safe_authors}/{safe_title}"
+            os.makedirs(directory, exist_ok=True)
+
+            download_path = f"{directory}/{cleaned_name}"
             self.downloaded_paths.append(download_path)
 
-            with open(download_path, "wb") as f:
-                download_response = requests.get(
-                    download_url, headers=Library.REQUEST_HEADERS, cookies=cookies
-                )
-                f.write(download_response.content)
+            with session.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                with open(download_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
 
 
 class Library:
-    LIBRARY_EXPORT_URL: str = "https://libro.fm/user/library/export.csv"
-    REQUEST_HEADERS: dict[str:str] = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:146.0) Gecko/20100101 Firefox/146.0",
+    LIBRARY_EXPORT_URL = "https://libro.fm/user/library/export.csv"
+
+    REQUEST_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://libro.fm/user/library",
     }
 
     def __init__(self):
-        self.cookies = find_libro_fm_cookies()
+        cookies = find_libro_fm_cookies()
+        if cookies is None:
+            raise RuntimeError("No libro.fm cookies found. Please log in via browser.")
+
+        self.session = requests.Session()
+        self.session.headers.update(self.REQUEST_HEADERS)
+        self.session.cookies.update(cookies)
+
         self.csv_summary = None
         self.books: list[Book] = []
 
-        if self.cookies is None:
-            print(
-                "You have not logged into https://www.libro.fm/ on a browser recently"
-            )
-            print("Please do so in order to proceed")
-            raise Exception(
-                "You are missing https://libro.fm/ cookies, which are required to run this program"
-            )
-
-    def fetch_csv_summary(self) -> dict:
+    def fetch_csv_summary(self) -> list[dict]:
         if self.csv_summary is not None:
-            # ^^ If we already have, cache it
             return self.csv_summary
 
-        csv_summary_response = requests.get(
-            Library.LIBRARY_EXPORT_URL,
-            headers=Library.REQUEST_HEADERS,
-            cookies=self.cookies,
-        )
+        r = self.session.get(self.LIBRARY_EXPORT_URL)
+        r.raise_for_status()
 
-        csv_reader = csv.DictReader(csv_summary_response.text.split("\n"))
-        self.csv_summary = [row for row in csv_reader]
-
+        reader = csv.DictReader(r.text.splitlines())
+        self.csv_summary = list(reader)
         return self.csv_summary
 
     def fetch_books(self) -> list[Book]:
-        if self.books != []:
-            # If already populated, don't refill
+        if self.books:
             return self.books
 
-        csv_summary = self.fetch_csv_summary()
-        for row in csv_summary:
+        for row in self.fetch_csv_summary():
             self.books.append(Book(row))
 
         return self.books
 
     def fetch_book_download_urls(self) -> list[Book]:
-        # This can be very lengthy due to the amount of required requests
-        # Especially if the library is large
         for book in self.fetch_books():
-            page_response = requests.get(
-                book.url, headers=Library.REQUEST_HEADERS, cookies=self.cookies
-            )
-            raw_download_lines = re.findall(
-                re.compile("Download \d.*"), page_response.text
-            )
+            r = self.session.get(book.url)
+            r.raise_for_status()
 
-            for raw_download_line in raw_download_lines:
-                download_url = (
-                    "https://libro.fm"
-                    + raw_download_line.split('href="')[1].split('">')[0]
-                ).replace("amp;", "")
-                book.download_urls.append(download_url)
+            raw_links = re.findall(r'href="(/[^"]+download[^"]+)"', r.text)
+            for link in raw_links:
+                book.download_urls.append("https://libro.fm" + link.replace("amp;", ""))
 
         return self.books
 
     def extract_downloaded_files(self) -> None:
-        books_list = self.fetch_books()
-
-        for book in books_list:  # Preliminary Pass
-            if book.downloaded_paths == []:
-                raise ValueError(
-                    "Cannot extract files if they have not all been downloaded"
-                )
-
-        book_count = 1
-        for book in books_list:
-            for zip_file_path in book.downloaded_paths:
-                zip_file = zipfile.ZipFile(zip_file_path)
-                zip_file.extractall("/".join(zip_file_path.split("/")[:-1]))
-                print(
-                    f"({book_count} / {len(books_list)}) Extracting {zip_file_path}..."
-                )
-
-            book_count += 1
-
-    def download_all_books(self, output_directory: str = "library_out") -> None:
-        book_count = 1
-        for book in self.fetch_books():
-            print(
-                f"({book_count} / {len(self.fetch_books())}) Downloading {book.title}..."
-            )
-            book.download(self.cookies, output_directory)
-            book_count += 1
+        for book in self.books:
+            for zip_path in book.downloaded_paths:
+                with zipfile.ZipFile(zip_path) as z:
+                    z.extractall(os.path.dirname(zip_path))
 
     def cleanup_files(self) -> None:
-        books_list = self.fetch_books()
-
-        for book in books_list:  # Preliminary Pass
-            if book.downloaded_paths == []:
-                raise ValueError(
-                    "Cannot clean up files if they have not all been downloaded"
-                )
-
-        for book in books_list:
+        for book in self.books:
             for zip_path in book.downloaded_paths:
                 os.remove(zip_path)
 
-            book_directory = "/".join(book.downloaded_paths[0].split("/")[:-1])
-            for mp3 in os.listdir(book_directory):
-                os.rename(
-                    f"{book_directory}/{mp3}",
-                    f"{book_directory}/{mp3.split(' - ')[-1]}",
-                )
+            directory = os.path.dirname(book.downloaded_paths[0])
+            for f in os.listdir(directory):
+                if " - " in f:
+                    os.rename(
+                        f"{directory}/{f}",
+                        f"{directory}/{f.split(' - ', 1)[1]}",
+                    )
 
-    def backup(self, output_directory: str = "library_out") -> None:
-        # Perform a full library backup
-
-        print("Running setup stage...")
-        # Setup Stage
+    def backup(self, output_directory="library_out") -> None:
+        print("Fetching download URLs…")
         self.fetch_book_download_urls()
 
-        print("Running download stage...")
-        # Download Stage
-        self.download_all_books(output_directory)
+        print("Downloading books…")
+        for i, book in enumerate(self.books, start=1):
+            print(f"({i}/{len(self.books)}) {book.title}")
+            book.download(self.session, output_directory)
 
-        print("Running extraction stage...")
-        # Extraction Stage
+        print("Extracting…")
         self.extract_downloaded_files()
 
-        print("Running cleanup stage...")
-        # Cleanup Stage
+        print("Cleaning up…")
         self.cleanup_files()
 
-        print("Clean! Library backed up!")
+        print("Library backup complete ✅")

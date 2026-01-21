@@ -1,21 +1,31 @@
 import browser_cookie3
+import requests
 
 
-def find_libro_fm_cookies(verbose: bool = False) -> dict | None:
-    found_cookies = {}
+def find_libro_fm_cookies(
+    verbose: bool = False,
+) -> requests.cookies.RequestsCookieJar | None:
+    jar = requests.cookies.RequestsCookieJar()
+
     for browser in browser_cookie3.all_browsers:
-        try:  # This can fail if the browser isn't present
-            for cookie in browser(domain_name="libro.fm"):
-                found_cookies[cookie.name] = cookie.value
+        try:
+            cookies = browser(domain_name="libro.fm")
+            for cookie in cookies:
+                jar.set(
+                    name=cookie.name,
+                    value=cookie.value,
+                    domain=cookie.domain,
+                    path=cookie.path,
+                )
 
-            if verbose:
-                print(f"Found https://libro.fm/ cookies in browser {browser.__name__}")
-            return found_cookies
+            if jar:
+                if verbose:
+                    print(f"Found libro.fm cookies in {browser.__name__}")
+                return jar
+
         except browser_cookie3.BrowserCookieError:
             if verbose:
-                print(
-                    f"Failed to find https://libro.fm/ cookies with browser {browser.__name__}"
-                )
+                print(f"No cookies found in {browser.__name__}")
             continue
 
     return None
