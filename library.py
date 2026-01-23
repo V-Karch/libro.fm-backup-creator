@@ -19,6 +19,21 @@ class Book:
         self.download_urls: list[str] = []
         self.downloaded_paths: list[str] = []
 
+    def __str__(self): # Function for debugging and displaying books
+        result: str = ""
+
+        result += f"Title: {self.title}\n"
+        result += f"Author(s): {self.authors}\n"
+        result += f"Narrator(s): {self.narrators}\n"
+        result += f"ISBN: {self.isbn}\n"
+        result += f"Publication Date: {self.publication_date}\n"
+        result += f"Purchased Date: {self.purchased_date}\n"
+        result += f"URL: {self.url}\n"
+        result += f"Download URLs: {self.download_urls}\n"
+        result += f"Downloaded Paths: {self.downloaded_paths}\n"
+
+        return result
+
     def download(self, session: requests.Session, output_directory: str) -> None:
         if not self.download_urls:
             raise ValueError("Download URLs not populated")
