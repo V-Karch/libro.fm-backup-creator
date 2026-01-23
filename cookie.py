@@ -27,5 +27,9 @@ def find_libro_fm_cookies(
             if verbose:
                 print(f"No cookies found in {browser.__name__}")
             continue
+        except TypeError:
+            if verbose:
+                print(f"Skipping {browser.__name__}...")
+            continue
 
     return None
